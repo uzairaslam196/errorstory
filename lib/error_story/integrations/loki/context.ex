@@ -31,11 +31,11 @@ defmodule ErrorStory.Integrations.Loki.Context do
   end
 
   defp build_query(%Incident{request_id: request_id}) when is_binary(request_id) do
-    {:ok, ~s({request_id="#{request_id}"})}
+    {:ok, ~s({request_id=#{Jason.encode!(request_id)}})}
   end
 
   defp build_query(%Incident{trace_id: trace_id}) when is_binary(trace_id) do
-    {:ok, ~s({trace_id="#{trace_id}"})}
+    {:ok, ~s({trace_id=#{Jason.encode!(trace_id)}})}
   end
 
   defp build_query(_incident), do: {:error, :missing_request_or_trace_id}
