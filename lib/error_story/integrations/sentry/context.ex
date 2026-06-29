@@ -82,9 +82,7 @@ defmodule ErrorStory.Integrations.Sentry.Context do
         transaction: Map.get(event, "transaction"),
         tags: tags(event),
         stacktrace: stacktrace(event),
-        action: Map.get(payload, "action"),
-        issue: issue,
-        event: event
+        action: Map.get(payload, "action")
       },
       links: sentry_links(issue, event)
     )

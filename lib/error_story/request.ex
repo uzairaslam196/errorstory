@@ -75,7 +75,7 @@ defmodule ErrorStory.Request do
         {:error, {:http_error, status, body}}
 
       {:error, reason} ->
-        Logger.error("ErrorStory HTTP #{method} failed reason=#{inspect(reason)}")
+        Logger.error("ErrorStory HTTP #{method} failed")
         {:error, reason}
     end
   end

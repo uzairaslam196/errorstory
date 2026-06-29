@@ -75,11 +75,25 @@ defmodule ErrorStory.Integrations.Sentry.ContextTest do
               user_id: "user_123",
               request_id: "req_123",
               trace_id: "trace_123",
-              evidence: [error_evidence],
+              evidence: [
+                %ErrorStory.Evidence{
+                  source: :sentry,
+                  type: :error,
+                  payload: evidence_payload
+                }
+              ],
               links: [%{source: :sentry, url: "https://sentry.example/issues/123"}]
             }} = Context.normalize_webhook(payload)
 
-    assert error_evidence.source == :sentry
-    assert error_evidence.type == :error
+    assert %{
+             issue_id: "123",
+             event_id: nil,
+             transaction: nil,
+             tags: %{},
+             action: "created"
+           } = evidence_payload
+
+    refute Map.has_key?(evidence_payload, :issue)
+    refute Map.has_key?(evidence_payload, :event)
   end
 end
