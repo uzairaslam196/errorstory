@@ -10,6 +10,8 @@ defmodule ErrorStory.Video.HtmlReport do
   alias ErrorStory.Incident
   alias ErrorStory.Video.ScenePlan
 
+  @visual_reference_fields [:url, :file_path, :replay_url, :dom_snapshot_id, :route, :occurred_at]
+
   @doc """
   Renders a scene plan as an HTML document.
 
@@ -54,6 +56,29 @@ defmodule ErrorStory.Video.HtmlReport do
        </body>
      </html>
      """}
+  end
+
+  defp render_scene(%{type: :browser_view, evidence: evidence} = scene) do
+    evidence = evidence || %{}
+
+    """
+    <article data-scene-type="browser_view">
+      <h2>#{escape(scene.title)}</h2>
+      <p>#{escape(scene.caption)}</p>
+      <dl>
+        #{definition("Evidence Type", evidence_value(evidence, :evidence_type))}
+        #{definition("Source", evidence_value(evidence, :source))}
+        #{definition("Route", evidence_value(evidence, :route))}
+        #{definition("Viewport", evidence_value(evidence, :viewport))}
+        #{definition("Timestamp", evidence_value(evidence, :timestamp))}
+        #{definition("URL", evidence_value(evidence, :url))}
+        #{definition("File Path", evidence_value(evidence, :file_path))}
+        #{definition("Replay URL", evidence_value(evidence, :replay_url))}
+        #{definition("DOM Snapshot ID", evidence_value(evidence, :dom_snapshot_id))}
+        #{definition("Highlight", evidence_value(evidence, :highlight))}
+      </dl>
+    </article>
+    """
   end
 
   defp render_scene(scene) do
@@ -111,6 +136,9 @@ defmodule ErrorStory.Video.HtmlReport do
   defp render_evidence_sections(%Incident{} = incident) do
     """
     #{render_stacktrace(incident.stacktrace)}
+    #{render_visual_evidence_group("Screenshots", :screenshot, incident.evidence)}
+    #{render_visual_evidence_group("Session Replays", :replay, incident.evidence)}
+    #{render_visual_evidence_group("DOM Snapshots", :dom_snapshot, incident.evidence)}
     #{render_evidence_group("Logs", :log, incident.evidence)}
     #{render_evidence_group("User Journey", :journey_event, incident.evidence)}
     #{render_links(incident.links)}
@@ -164,6 +192,107 @@ defmodule ErrorStory.Video.HtmlReport do
     end
   end
 
+  defp render_visual_evidence_group(title, type, evidence) do
+    evidence_items = Enum.filter(evidence, &visual_evidence?(&1, type))
+
+    if evidence_items == [] do
+      ""
+    else
+      rendered_items =
+        Enum.map_join(evidence_items, "\n", fn evidence_item ->
+          render_visual_evidence_item(type, evidence_item)
+        end)
+
+      """
+      <section data-visual-evidence-type="#{escape(type)}">
+        <h2>#{escape(title)}</h2>
+        <ul>
+          #{rendered_items}
+        </ul>
+      </section>
+      """
+    end
+  end
+
+  defp render_visual_evidence_item(type, evidence_item) do
+    visual = evidence_item.visual || %{}
+
+    """
+    <li>
+      <strong>#{escape(evidence_item.source)}</strong>: #{escape(evidence_item.summary)}
+      #{render_visual_preview(type, visual)}
+      <dl>
+        #{definition("Route", evidence_value(visual, :route))}
+        #{definition("Viewport", evidence_value(visual, :viewport))}
+        #{definition("Captured", evidence_item.occurred_at || evidence_value(visual, :occurred_at))}
+        #{definition("URL", evidence_value(visual, :url))}
+        #{definition("File Path", evidence_value(visual, :file_path))}
+        #{definition("Replay URL", evidence_value(visual, :replay_url))}
+        #{definition("DOM Snapshot ID", evidence_value(visual, :dom_snapshot_id))}
+        #{definition("Highlight", evidence_value(visual, :highlight))}
+      </dl>
+    </li>
+    """
+  end
+
+  defp render_visual_preview(:screenshot, visual) do
+    case evidence_value(visual, :url) do
+      url when is_binary(url) ->
+        if safe_url?(url) do
+          ~s(<figure><img src="#{escape(url)}" alt="Screenshot evidence preview"></figure>)
+        else
+          ""
+        end
+
+      _missing ->
+        ""
+    end
+  end
+
+  defp render_visual_preview(:replay, visual) do
+    case evidence_value(visual, :replay_url) do
+      replay_url when is_binary(replay_url) ->
+        if safe_url?(replay_url) do
+          ~s(<p><a href="#{escape(replay_url)}">Open replay</a></p>)
+        else
+          ""
+        end
+
+      _missing ->
+        ""
+    end
+  end
+
+  defp render_visual_preview(:dom_snapshot, visual) do
+    case evidence_value(visual, :url) do
+      url when is_binary(url) ->
+        if safe_url?(url) do
+          ~s(<p><a href="#{escape(url)}">Open DOM snapshot</a></p>)
+        else
+          ""
+        end
+
+      _missing ->
+        ""
+    end
+  end
+
+  defp render_visual_preview(_type, _visual), do: ""
+
+  defp visual_evidence?(evidence_item, type) do
+    evidence_item.type == type and is_map(evidence_item.visual) and
+      has_visual_reference?(evidence_item.visual)
+  end
+
+  defp has_visual_reference?(visual) do
+    Enum.any?(@visual_reference_fields, fn key ->
+      visual
+      |> evidence_value(key)
+      |> blank?()
+      |> Kernel.not()
+    end)
+  end
+
   defp render_links([]), do: ""
 
   defp render_links(links) do
@@ -172,7 +301,11 @@ defmodule ErrorStory.Video.HtmlReport do
         source = Map.get(link, :source, Map.get(link, "source", "link"))
         url = Map.get(link, :url, Map.get(link, "url", ""))
 
-        ~s(<li><a href="#{escape(url)}">#{escape(source)}</a></li>)
+        if safe_url?(url) do
+          ~s(<li><a href="#{escape(url)}">#{escape(source)}</a></li>)
+        else
+          "<li>#{escape(source)}: #{escape(url)}</li>"
+        end
       end)
 
     """
@@ -205,12 +338,40 @@ defmodule ErrorStory.Video.HtmlReport do
 
   defp escape(value) do
     value
-    |> to_string()
+    |> value_to_string()
     |> String.replace("&", "&amp;")
     |> String.replace("<", "&lt;")
     |> String.replace(">", "&gt;")
     |> String.replace("\"", "&quot;")
   end
+
+  defp value_to_string(value) when is_binary(value), do: value
+  defp value_to_string(value) when is_atom(value), do: Atom.to_string(value)
+  defp value_to_string(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  defp value_to_string(value) when is_integer(value) or is_float(value), do: to_string(value)
+  defp value_to_string(value), do: inspect(value)
+
+  defp safe_url?(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) ->
+        true
+
+      _uri ->
+        false
+    end
+  end
+
+  defp safe_url?(_url), do: false
+
+  defp evidence_value(values, key) when is_map(values) do
+    Map.get(values, key, Map.get(values, to_string(key)))
+  end
+
+  defp evidence_value(_values, _key), do: nil
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_value), do: false
 
   defp definition(_label, value) when value in [nil, ""], do: ""
 

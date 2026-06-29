@@ -103,6 +103,21 @@ Add safe application state with an allowlist:
 # snapshot.attrs does not include :token
 ```
 
+Attach visual evidence from a host app or external provider:
+
+```elixir
+{:ok, screenshot} =
+  ErrorStory.visual_evidence(:screenshot, %{
+    source: :playwright,
+    summary: "Checkout form before submit",
+    url: "https://cdn.example.com/errorstory/frame.png",
+    route: "/checkout",
+    viewport: %{width: 1440, height: 900}
+  })
+
+incident = ErrorStory.Incident.add_evidence(incident, screenshot)
+```
+
 Build a deterministic explanation:
 
 ```elixir
@@ -205,6 +220,19 @@ Loki enrichment searches by `request_id` first, then `trace_id`.
 ```
 
 PostHog enrichment uses `user_id` or `session_id` from the normalized incident.
+
+### Visual Evidence From Host Apps
+
+ErrorStory accepts screenshots, replay links, and DOM snapshot references with
+`ErrorStory.visual_evidence/3`. A host app can pass replay URLs from PostHog,
+LogRocket, OpenReplay, or Highlight; screenshot paths or URLs from Playwright or
+custom capture; and DOM snapshot ids from custom instrumentation.
+
+ErrorStory does not record browser sessions, capture screenshots, or run browser
+automation in this phase. It normalizes safe visual references and renders
+browser-view scenes only when those references exist.
+
+See `docs/providers/visual-evidence.md` for examples.
 
 ### OpenAI Explanation Provider
 
