@@ -130,4 +130,20 @@ defmodule ErrorStoryTest do
       assert html =~ ~s(data-error-story-report="true")
     end
   end
+
+  describe "report/2" do
+    test "builds a complete report through the public API" do
+      {:ok, incident} = Incident.new(title: "Checkout failed", request_id: "req_123")
+
+      assert {:ok,
+              %{
+                incident: %Incident{evidence: [_log]},
+                explanation: %Explanation{},
+                scene_plan: %ScenePlan{},
+                artifact: %{format: :html_report, content: html}
+              }} = ErrorStory.report(incident, logs: {FakeLogProvider, []})
+
+      assert html =~ "request failed"
+    end
+  end
 end

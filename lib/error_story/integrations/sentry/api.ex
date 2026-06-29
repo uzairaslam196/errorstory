@@ -37,6 +37,50 @@ defmodule ErrorStory.Integrations.Sentry.Api do
   end
 
   @doc """
+  Fetches a Sentry issue by id.
+
+  ## Parameters
+
+    * `issue_id` - Sentry issue id.
+    * `opts` - optional client options, including `:auth_token`.
+
+  ## Returns
+
+  `{:ok, map()}` or `{:error, reason}`.
+  """
+  @spec fetch_issue(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def fetch_issue(issue_id, opts \\ []) when is_binary(issue_id) do
+    with {:ok, %{body: body}} <- Request.get(client(opts), "issues/#{issue_id}/") do
+      {:ok, body}
+    end
+  end
+
+  @doc """
+  Fetches a Sentry event by organization, project, and event id.
+
+  ## Parameters
+
+    * `organization_slug` - Sentry organization slug.
+    * `project_slug` - Sentry project slug.
+    * `event_id` - Sentry event id.
+    * `opts` - optional client options, including `:auth_token`.
+
+  ## Returns
+
+  `{:ok, map()}` or `{:error, reason}`.
+  """
+  @spec fetch_project_event(String.t(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def fetch_project_event(organization_slug, project_slug, event_id, opts \\ [])
+      when is_binary(organization_slug) and is_binary(project_slug) and is_binary(event_id) do
+    path = "projects/#{organization_slug}/#{project_slug}/events/#{event_id}/"
+
+    with {:ok, %{body: body}} <- Request.get(client(opts), path) do
+      {:ok, body}
+    end
+  end
+
+  @doc """
   Verifies a Sentry webhook signature using HMAC-SHA256.
 
   ## Parameters

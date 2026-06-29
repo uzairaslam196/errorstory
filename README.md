@@ -121,6 +121,39 @@ Create and render a video/report artifact:
 
 The v1 renderer returns an HTML report. Future MP4/WebM renderers should use the same scene-plan contract.
 
+Or use the end-to-end report pipeline:
+
+```elixir
+{:ok, report} =
+  ErrorStory.report(incident,
+    logs: {ErrorStory.Integrations.Loki.Context, [base_url: "https://loki.example.com"]},
+    journey:
+      {ErrorStory.Integrations.PostHog.Context,
+       [project_id: "12345", api_key: System.fetch_env!("POST_HOG_API_KEY")]}
+  )
+
+report.artifact.format
+report.artifact.content
+```
+
+If one enrichment provider fails, `ErrorStory.report/2` returns a structured error with the provider failures and a partial report built from the evidence that was available.
+
+## Demo
+
+Generate a local report from the bundled Sentry fixture:
+
+```bash
+mix error_story.demo
+```
+
+The command writes:
+
+```text
+tmp/error_story_demo_report.html
+```
+
+The output file is ignored by Git.
+
 ## Provider Examples
 
 ### Sentry Webhook Normalization
@@ -319,6 +352,8 @@ The current test suite covers:
 - deterministic local explanations
 - video scene-plan behavior with and without visual evidence
 - HTML report rendering and escaping
+- end-to-end report orchestration
+- local demo task generation
 
 ## Roadmap
 

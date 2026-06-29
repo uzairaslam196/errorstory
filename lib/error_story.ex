@@ -11,6 +11,7 @@ defmodule ErrorStory do
   alias ErrorStory.Explanation
   alias ErrorStory.Incident
   alias ErrorStory.Integrations.Sentry
+  alias ErrorStory.Report
   alias ErrorStory.Video.HtmlReport
   alias ErrorStory.Video.ScenePlan
 
@@ -232,6 +233,24 @@ defmodule ErrorStory do
     with {:ok, html} <- render_report(scene_plan, opts) do
       {:ok, %{format: :html_report, content: html}}
     end
+  end
+
+  @doc """
+  Builds a complete report from a normalized incident.
+
+  ## Parameters
+
+    * `incident` - normalized incident.
+    * `opts` - optional `:logs`, `:journey`, and `:llm` provider specs.
+
+  ## Returns
+
+  `{:ok, %{incident:, explanation:, scene_plan:, artifact:}}` or a structured
+  error containing provider failures and a partial report.
+  """
+  @spec report(Incident.t(), keyword()) :: {:ok, Report.t()} | {:error, term()}
+  def report(%Incident{} = incident, opts \\ []) do
+    Report.build(incident, opts)
   end
 
   defp exception_title(%_struct{} = exception) do

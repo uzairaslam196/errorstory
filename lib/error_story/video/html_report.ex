@@ -6,6 +6,8 @@ defmodule ErrorStory.Video.HtmlReport do
   a grounded report from a scene plan without inventing missing browser views.
   """
 
+  alias ErrorStory.Explanation
+  alias ErrorStory.Incident
   alias ErrorStory.Video.ScenePlan
 
   @doc """
@@ -25,6 +27,8 @@ defmodule ErrorStory.Video.HtmlReport do
     rendered_scenes = Enum.map_join(scene_plan.scenes, "\n", &render_scene/1)
     rendered_warnings = render_warnings(scene_plan.warnings)
     title = Keyword.get(opts, :title, scene_plan.title)
+    incident = Keyword.get(opts, :incident)
+    explanation = Keyword.get(opts, :explanation)
 
     {:ok,
      """
@@ -38,8 +42,12 @@ defmodule ErrorStory.Video.HtmlReport do
          <main data-error-story-report="true">
            <h1>#{escape(scene_plan.title)}</h1>
            <p>Target duration: #{scene_plan.duration_target_seconds}s</p>
+           #{render_incident_summary(incident)}
+           #{render_explanation(explanation)}
+           #{render_evidence_sections(incident)}
            #{rendered_warnings}
            <section data-scenes="true">
+             <h2>Scene Plan</h2>
      #{rendered_scenes}
            </section>
          </main>
@@ -55,6 +63,125 @@ defmodule ErrorStory.Video.HtmlReport do
       <p>#{escape(scene.caption)}</p>
       <pre>#{escape(inspect(scene.evidence))}</pre>
     </article>
+    """
+  end
+
+  defp render_incident_summary(%Incident{} = incident) do
+    """
+    <section data-incident-summary="true">
+      <h2>Incident</h2>
+      <dl>
+        #{definition("Source", incident.source)}
+        #{definition("Service", incident.service)}
+        #{definition("Environment", incident.environment)}
+        #{definition("Release", incident.release)}
+        #{definition("Route", incident.route)}
+        #{definition("Request ID", incident.request_id)}
+        #{definition("Trace ID", incident.trace_id)}
+        #{definition("User ID", incident.user_id)}
+      </dl>
+    </section>
+    """
+  end
+
+  defp render_incident_summary(_incident), do: ""
+
+  defp render_explanation(%Explanation{} = explanation) do
+    """
+    <section data-explanation="true">
+      <h2>Explanation</h2>
+      <h3>Developer</h3>
+      <p>#{escape(explanation.developer_summary)}</p>
+      <h3>Product</h3>
+      <p>#{escape(explanation.product_summary)}</p>
+      <h3>Support</h3>
+      <p>#{escape(explanation.support_summary)}</p>
+      <h3>Likely Cause</h3>
+      <p>#{escape(explanation.likely_cause)}</p>
+      <h3>Next Checks</h3>
+      <ul>
+        #{Enum.map_join(explanation.next_checks, "\n", &"<li>#{escape(&1)}</li>")}
+      </ul>
+    </section>
+    """
+  end
+
+  defp render_explanation(_explanation), do: ""
+
+  defp render_evidence_sections(%Incident{} = incident) do
+    """
+    #{render_stacktrace(incident.stacktrace)}
+    #{render_evidence_group("Logs", :log, incident.evidence)}
+    #{render_evidence_group("User Journey", :journey_event, incident.evidence)}
+    #{render_links(incident.links)}
+    """
+  end
+
+  defp render_evidence_sections(_incident), do: ""
+
+  defp render_stacktrace([]), do: ""
+
+  defp render_stacktrace(stacktrace) do
+    rendered_frames =
+      Enum.map_join(stacktrace, "\n", fn frame ->
+        module = Map.get(frame, "module") || Map.get(frame, :module)
+        function = Map.get(frame, "function") || Map.get(frame, :function)
+        filename = Map.get(frame, "filename") || Map.get(frame, :filename)
+        line_number = Map.get(frame, "lineno") || Map.get(frame, :lineno)
+
+        "<li><code>#{escape(module)}.#{escape(function)} #{escape(filename)}:#{escape(line_number)}</code></li>"
+      end)
+
+    """
+    <section data-stacktrace="true">
+      <h2>Stack Trace</h2>
+      <ol>
+        #{rendered_frames}
+      </ol>
+    </section>
+    """
+  end
+
+  defp render_evidence_group(title, type, evidence) do
+    evidence_items = Enum.filter(evidence, &(&1.type == type))
+
+    if evidence_items == [] do
+      ""
+    else
+      rendered_items =
+        Enum.map_join(evidence_items, "\n", fn evidence_item ->
+          "<li><strong>#{escape(evidence_item.source)}</strong>: #{escape(evidence_item.summary)}</li>"
+        end)
+
+      """
+      <section data-evidence-type="#{escape(type)}">
+        <h2>#{escape(title)}</h2>
+        <ul>
+          #{rendered_items}
+        </ul>
+      </section>
+      """
+    end
+  end
+
+  defp render_links([]), do: ""
+
+  defp render_links(links) do
+    rendered_links =
+      Enum.map_join(links, "\n", fn link ->
+        source = Map.get(link, :source, Map.get(link, "source", "link"))
+        url = Map.get(link, :url, Map.get(link, "url", ""))
+
+        ~s(<li><a href="#{escape(url)}">#{escape(source)}</a></li>)
+      end)
+
+    """
+    <section data-links="true">
+      <h2>Links</h2>
+      <ul>
+        #{rendered_links}
+      </ul>
+    </section>
     """
   end
 
@@ -83,5 +210,11 @@ defmodule ErrorStory.Video.HtmlReport do
     |> String.replace("<", "&lt;")
     |> String.replace(">", "&gt;")
     |> String.replace("\"", "&quot;")
+  end
+
+  defp definition(_label, value) when value in [nil, ""], do: ""
+
+  defp definition(label, value) do
+    "<dt>#{escape(label)}</dt><dd>#{escape(value)}</dd>"
   end
 end
