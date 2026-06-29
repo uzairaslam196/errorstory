@@ -10,6 +10,7 @@ defmodule ErrorStory.Integrations.Sentry.Context do
 
   alias ErrorStory.Evidence
   alias ErrorStory.Incident
+  alias ErrorStory.Integrations.Sentry.Api
 
   @impl ErrorStory.Integrations.ErrorTracker
   @doc """
@@ -18,7 +19,9 @@ defmodule ErrorStory.Integrations.Sentry.Context do
   ## Parameters
 
     * `payload` - decoded Sentry webhook payload.
-    * `opts` - optional metadata.
+    * `opts` - optional metadata. Pass `fetch_details: true` to fetch Sentry
+      issue and event details before normalization. Event detail hydration also
+      requires `:organization_slug` and `:project_slug`.
 
   ## Returns
 
@@ -26,6 +29,68 @@ defmodule ErrorStory.Integrations.Sentry.Context do
   """
   @spec normalize_webhook(map(), keyword()) :: {:ok, Incident.t()} | {:error, term()}
   def normalize_webhook(payload, opts \\ []) when is_map(payload) do
+    payload_result =
+      if Keyword.get(opts, :fetch_details, false) do
+        fetch_details(payload, opts)
+      else
+        {:ok, payload}
+      end
+
+    with {:ok, sentry_payload} <- payload_result do
+      normalize_payload(sentry_payload, opts)
+    end
+  end
+
+  defp fetch_details(payload, opts) do
+    webhook_data = Map.get(payload, "data", %{})
+    issue = Map.get(webhook_data, "issue", %{})
+    event = Map.get(webhook_data, "event", %{})
+
+    with {:ok, issue} <- fetch_issue_details(issue, opts),
+         {:ok, event} <- fetch_event_details(event, opts) do
+      webhook_data =
+        webhook_data
+        |> Map.put("issue", issue)
+        |> Map.put("event", event)
+
+      {:ok, Map.put(payload, "data", webhook_data)}
+    end
+  end
+
+  defp fetch_issue_details(issue, opts) do
+    case Map.get(issue, "id") do
+      issue_id when is_binary(issue_id) and issue_id != "" ->
+        case Api.fetch_issue(issue_id, opts) do
+          {:ok, fetched_issue} -> {:ok, Map.merge(issue, fetched_issue)}
+          {:error, reason} -> {:error, {:sentry_detail_fetch_failed, :issue, reason}}
+        end
+
+      _missing_issue_id ->
+        {:ok, issue}
+    end
+  end
+
+  defp fetch_event_details(event, opts) do
+    organization_slug = Keyword.get(opts, :organization_slug)
+    project_slug = Keyword.get(opts, :project_slug)
+    event_id = Map.get(event, "event_id")
+
+    if fetch_event_details?(organization_slug, project_slug, event_id) do
+      case Api.fetch_project_event(organization_slug, project_slug, event_id, opts) do
+        {:ok, fetched_event} -> {:ok, Map.merge(event, fetched_event)}
+        {:error, reason} -> {:error, {:sentry_detail_fetch_failed, :event, reason}}
+      end
+    else
+      {:ok, event}
+    end
+  end
+
+  defp fetch_event_details?(organization_slug, project_slug, event_id) do
+    is_binary(organization_slug) and organization_slug != "" and is_binary(project_slug) and
+      project_slug != "" and is_binary(event_id) and event_id != ""
+  end
+
+  defp normalize_payload(payload, opts) do
     issue = Map.get(payload, "data", %{}) |> Map.get("issue", %{})
     event = Map.get(payload, "data", %{}) |> Map.get("event", %{})
 
