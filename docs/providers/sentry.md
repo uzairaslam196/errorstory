@@ -22,7 +22,11 @@ The Sentry context currently extracts:
 - tags
 - Sentry permalinks
 
-Raw Sentry issue/event maps stay inside the Sentry error evidence payload. Agent, report, and video modules should consume normalized incident fields and evidence summaries.
+Sentry error evidence stores allowlisted provider facts such as issue id,
+event id, culprit, transaction, tags, stack frames, action, and links. Raw
+Sentry issue/event maps are not retained in normalized evidence. Agent, report,
+and video modules should consume normalized incident fields and evidence
+summaries.
 
 ## Webhook Safety
 
