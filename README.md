@@ -188,6 +188,24 @@ end
 
 Webhook signature verification should happen on the raw body before any side effect.
 
+Sentry webhooks can be sparse. To opt in to detail hydration, pass
+`fetch_details: true` after signature verification:
+
+```elixir
+{:ok, incident} =
+  ErrorStory.normalize(:sentry, payload,
+    fetch_details: true,
+    auth_token: System.fetch_env!("SENTRY_AUTH_TOKEN"),
+    organization_slug: "acme",
+    project_slug: "billing"
+  )
+```
+
+With `fetch_details: true`, ErrorStory fetches the Sentry issue when an issue id
+is present. It fetches the event only when `organization_slug`, `project_slug`,
+and `event_id` are present. The normalized incident and evidence payload keep
+allowlisted fields; raw Sentry issue and event maps are not passed downstream.
+
 ### Loki Log Enrichment
 
 ```elixir
