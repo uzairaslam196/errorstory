@@ -9,8 +9,7 @@ defmodule ErrorStory.Video.HtmlReport do
   alias ErrorStory.Explanation
   alias ErrorStory.Incident
   alias ErrorStory.Video.ScenePlan
-
-  @visual_reference_fields [:url, :file_path, :replay_url, :dom_snapshot_id, :route, :occurred_at]
+  alias ErrorStory.VisualEvidence
 
   @doc """
   Renders a scene plan as an HTML document.
@@ -66,16 +65,16 @@ defmodule ErrorStory.Video.HtmlReport do
       <h2>#{escape(scene.title)}</h2>
       <p>#{escape(scene.caption)}</p>
       <dl>
-        #{definition("Evidence Type", evidence_value(evidence, :evidence_type))}
-        #{definition("Source", evidence_value(evidence, :source))}
-        #{definition("Route", evidence_value(evidence, :route))}
-        #{definition("Viewport", evidence_value(evidence, :viewport))}
-        #{definition("Timestamp", evidence_value(evidence, :timestamp))}
-        #{definition("URL", evidence_value(evidence, :url))}
-        #{definition("File Path", evidence_value(evidence, :file_path))}
-        #{definition("Replay URL", evidence_value(evidence, :replay_url))}
-        #{definition("DOM Snapshot ID", evidence_value(evidence, :dom_snapshot_id))}
-        #{definition("Highlight", evidence_value(evidence, :highlight))}
+        #{definition("Evidence Type", VisualEvidence.value(evidence, :evidence_type))}
+        #{definition("Source", VisualEvidence.value(evidence, :source))}
+        #{definition("Route", VisualEvidence.value(evidence, :route))}
+        #{definition("Viewport", VisualEvidence.value(evidence, :viewport))}
+        #{definition("Timestamp", VisualEvidence.value(evidence, :timestamp))}
+        #{definition("URL", VisualEvidence.value(evidence, :url))}
+        #{definition("File Path", VisualEvidence.value(evidence, :file_path))}
+        #{definition("Replay URL", VisualEvidence.value(evidence, :replay_url))}
+        #{definition("DOM Snapshot ID", VisualEvidence.value(evidence, :dom_snapshot_id))}
+        #{definition("Highlight", VisualEvidence.value(evidence, :highlight))}
       </dl>
     </article>
     """
@@ -193,7 +192,7 @@ defmodule ErrorStory.Video.HtmlReport do
   end
 
   defp render_visual_evidence_group(title, type, evidence) do
-    evidence_items = Enum.filter(evidence, &visual_evidence?(&1, type))
+    evidence_items = Enum.filter(evidence, &(&1.type == type and VisualEvidence.referenced?(&1)))
 
     if evidence_items == [] do
       ""
@@ -222,21 +221,21 @@ defmodule ErrorStory.Video.HtmlReport do
       <strong>#{escape(evidence_item.source)}</strong>: #{escape(evidence_item.summary)}
       #{render_visual_preview(type, visual)}
       <dl>
-        #{definition("Route", evidence_value(visual, :route))}
-        #{definition("Viewport", evidence_value(visual, :viewport))}
-        #{definition("Captured", evidence_item.occurred_at || evidence_value(visual, :occurred_at))}
-        #{definition("URL", evidence_value(visual, :url))}
-        #{definition("File Path", evidence_value(visual, :file_path))}
-        #{definition("Replay URL", evidence_value(visual, :replay_url))}
-        #{definition("DOM Snapshot ID", evidence_value(visual, :dom_snapshot_id))}
-        #{definition("Highlight", evidence_value(visual, :highlight))}
+        #{definition("Route", VisualEvidence.value(visual, :route))}
+        #{definition("Viewport", VisualEvidence.value(visual, :viewport))}
+        #{definition("Captured", evidence_item.occurred_at || VisualEvidence.value(visual, :occurred_at))}
+        #{definition("URL", VisualEvidence.value(visual, :url))}
+        #{definition("File Path", VisualEvidence.value(visual, :file_path))}
+        #{definition("Replay URL", VisualEvidence.value(visual, :replay_url))}
+        #{definition("DOM Snapshot ID", VisualEvidence.value(visual, :dom_snapshot_id))}
+        #{definition("Highlight", VisualEvidence.value(visual, :highlight))}
       </dl>
     </li>
     """
   end
 
   defp render_visual_preview(:screenshot, visual) do
-    case evidence_value(visual, :url) do
+    case VisualEvidence.value(visual, :url) do
       url when is_binary(url) ->
         if safe_url?(url) do
           ~s(<figure><img src="#{escape(url)}" alt="Screenshot evidence preview"></figure>)
@@ -250,7 +249,7 @@ defmodule ErrorStory.Video.HtmlReport do
   end
 
   defp render_visual_preview(:replay, visual) do
-    case evidence_value(visual, :replay_url) do
+    case VisualEvidence.value(visual, :replay_url) do
       replay_url when is_binary(replay_url) ->
         if safe_url?(replay_url) do
           ~s(<p><a href="#{escape(replay_url)}">Open replay</a></p>)
@@ -264,7 +263,7 @@ defmodule ErrorStory.Video.HtmlReport do
   end
 
   defp render_visual_preview(:dom_snapshot, visual) do
-    case evidence_value(visual, :url) do
+    case VisualEvidence.value(visual, :url) do
       url when is_binary(url) ->
         if safe_url?(url) do
           ~s(<p><a href="#{escape(url)}">Open DOM snapshot</a></p>)
@@ -278,20 +277,6 @@ defmodule ErrorStory.Video.HtmlReport do
   end
 
   defp render_visual_preview(_type, _visual), do: ""
-
-  defp visual_evidence?(evidence_item, type) do
-    evidence_item.type == type and is_map(evidence_item.visual) and
-      has_visual_reference?(evidence_item.visual)
-  end
-
-  defp has_visual_reference?(visual) do
-    Enum.any?(@visual_reference_fields, fn key ->
-      visual
-      |> evidence_value(key)
-      |> blank?()
-      |> Kernel.not()
-    end)
-  end
 
   defp render_links([]), do: ""
 
@@ -362,16 +347,6 @@ defmodule ErrorStory.Video.HtmlReport do
   end
 
   defp safe_url?(_url), do: false
-
-  defp evidence_value(values, key) when is_map(values) do
-    Map.get(values, key, Map.get(values, to_string(key)))
-  end
-
-  defp evidence_value(_values, _key), do: nil
-
-  defp blank?(nil), do: true
-  defp blank?(""), do: true
-  defp blank?(_value), do: false
 
   defp definition(_label, value) when value in [nil, ""], do: ""
 

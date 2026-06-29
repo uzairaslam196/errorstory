@@ -15,19 +15,7 @@ defmodule ErrorStory do
   alias ErrorStory.Report
   alias ErrorStory.Video.HtmlReport
   alias ErrorStory.Video.ScenePlan
-
-  @visual_evidence_types [:screenshot, :replay, :dom_snapshot]
-  @visual_evidence_fields [
-    :route,
-    :url,
-    :file_path,
-    :replay_url,
-    :dom_snapshot_id,
-    :viewport,
-    :occurred_at,
-    :highlight
-  ]
-  @visual_reference_fields [:url, :file_path, :replay_url, :dom_snapshot_id, :route, :occurred_at]
+  alias ErrorStory.VisualEvidence
 
   @doc """
   Captures an exception into a normalized incident.
@@ -123,31 +111,9 @@ defmodule ErrorStory do
   `{:ok, %ErrorStory.Evidence{}}` or `{:error, reason}`.
   """
   @spec visual_evidence(atom(), map(), keyword()) :: {:ok, Evidence.t()} | {:error, term()}
-  def visual_evidence(type, attrs, opts \\ [])
-
-  def visual_evidence(type, attrs, opts)
-      when type in @visual_evidence_types and is_map(attrs) and is_list(opts) do
-    visual = visual_attrs(attrs, opts)
-
-    if has_visual_reference?(visual) do
-      Evidence.new(
-        type: type,
-        source: attr(attrs, :source, Keyword.get(opts, :source, :error_story)),
-        occurred_at: attr(attrs, :occurred_at, Keyword.get(opts, :occurred_at)),
-        summary: attr(attrs, :summary, Keyword.get(opts, :summary, "")),
-        links: visual_links(type, visual),
-        visual: visual
-      )
-    else
-      {:error, {:missing_visual_reference, type}}
-    end
+  def visual_evidence(type, attrs, opts \\ []) do
+    VisualEvidence.build(type, attrs, opts)
   end
-
-  def visual_evidence(type, attrs, _opts) when is_map(attrs) do
-    {:error, {:unsupported_visual_evidence_type, type}}
-  end
-
-  def visual_evidence(_type, _attrs, _opts), do: {:error, :invalid_visual_evidence_attrs}
 
   @doc """
   Normalizes a provider payload into an incident.
@@ -320,56 +286,4 @@ defmodule ErrorStory do
   end
 
   defp exception_title(exception), do: inspect(exception)
-
-  defp visual_attrs(attrs, opts) do
-    @visual_evidence_fields
-    |> Enum.reduce(%{}, fn key, visual ->
-      value = attr(attrs, key, Keyword.get(opts, key))
-
-      if blank?(value) do
-        visual
-      else
-        Map.put(visual, key, value)
-      end
-    end)
-  end
-
-  defp has_visual_reference?(visual) do
-    Enum.any?(@visual_reference_fields, fn key ->
-      visual
-      |> Map.get(key)
-      |> blank?()
-      |> Kernel.not()
-    end)
-  end
-
-  defp visual_links(:screenshot, visual) do
-    visual
-    |> Map.get(:url)
-    |> maybe_visual_link(:screenshot)
-  end
-
-  defp visual_links(:replay, visual) do
-    visual
-    |> Map.get(:replay_url)
-    |> maybe_visual_link(:replay)
-  end
-
-  defp visual_links(:dom_snapshot, visual) do
-    visual
-    |> Map.get(:url)
-    |> maybe_visual_link(:dom_snapshot)
-  end
-
-  defp maybe_visual_link(value, _source) when value in [nil, ""], do: []
-
-  defp maybe_visual_link(value, source), do: [%{source: source, url: value}]
-
-  defp attr(attrs, key, default) do
-    Map.get(attrs, key, Map.get(attrs, to_string(key), default))
-  end
-
-  defp blank?(nil), do: true
-  defp blank?(""), do: true
-  defp blank?(_value), do: false
 end
