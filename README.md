@@ -103,6 +103,21 @@ Add safe application state with an allowlist:
 # snapshot.attrs does not include :token
 ```
 
+Attach visual evidence from a host app or external provider:
+
+```elixir
+{:ok, screenshot} =
+  ErrorStory.visual_evidence(:screenshot, %{
+    source: :playwright,
+    summary: "Checkout form before submit",
+    url: "https://cdn.example.com/errorstory/frame.png",
+    route: "/checkout",
+    viewport: %{width: 1440, height: 900}
+  })
+
+incident = ErrorStory.Incident.add_evidence(incident, screenshot)
+```
+
 Build a deterministic explanation:
 
 ```elixir
@@ -120,6 +135,39 @@ Create and render a video/report artifact:
 ```
 
 The v1 renderer returns an HTML report. Future MP4/WebM renderers should use the same scene-plan contract.
+
+Or use the end-to-end report pipeline:
+
+```elixir
+{:ok, report} =
+  ErrorStory.report(incident,
+    logs: {ErrorStory.Integrations.Loki.Context, [base_url: "https://loki.example.com"]},
+    journey:
+      {ErrorStory.Integrations.PostHog.Context,
+       [project_id: "12345", api_key: System.fetch_env!("POST_HOG_API_KEY")]}
+  )
+
+report.artifact.format
+report.artifact.content
+```
+
+If one enrichment provider fails, `ErrorStory.report/2` returns a structured error with the provider failures and a partial report built from the evidence that was available.
+
+## Demo
+
+Generate a local report from the bundled Sentry fixture:
+
+```bash
+mix error_story.demo
+```
+
+The command writes:
+
+```text
+tmp/error_story_demo_report.html
+```
+
+The output file is ignored by Git.
 
 ## Provider Examples
 
@@ -172,6 +220,19 @@ Loki enrichment searches by `request_id` first, then `trace_id`.
 ```
 
 PostHog enrichment uses `user_id` or `session_id` from the normalized incident.
+
+### Visual Evidence From Host Apps
+
+ErrorStory accepts screenshots, replay links, and DOM snapshot references with
+`ErrorStory.visual_evidence/3`. A host app can pass replay URLs from PostHog,
+LogRocket, OpenReplay, or Highlight; screenshot paths or URLs from Playwright or
+custom capture; and DOM snapshot ids from custom instrumentation.
+
+ErrorStory does not record browser sessions, capture screenshots, or run browser
+automation in this phase. It normalizes safe visual references and renders
+browser-view scenes only when those references exist.
+
+See `docs/providers/visual-evidence.md` for examples.
 
 ### OpenAI Explanation Provider
 
@@ -319,6 +380,8 @@ The current test suite covers:
 - deterministic local explanations
 - video scene-plan behavior with and without visual evidence
 - HTML report rendering and escaping
+- end-to-end report orchestration
+- local demo task generation
 
 ## Roadmap
 

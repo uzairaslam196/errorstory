@@ -21,6 +21,18 @@ defmodule ErrorStory.TestSupport.FailingJourneyProvider do
   end
 end
 
+defmodule ErrorStory.TestSupport.FakeJourneyProvider do
+  @behaviour ErrorStory.Integrations.JourneyProvider
+
+  alias ErrorStory.Evidence
+  alias ErrorStory.Incident
+
+  @impl ErrorStory.Integrations.JourneyProvider
+  def fetch_journey(%Incident{}, _opts) do
+    {:ok, [%Evidence{type: :journey_event, source: :post_hog, summary: "clicked upgrade"}]}
+  end
+end
+
 defmodule ErrorStory.TestSupport.FakeLLMProvider do
   @behaviour ErrorStory.Integrations.LLMProvider
 

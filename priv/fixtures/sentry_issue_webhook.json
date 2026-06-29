@@ -1,0 +1,72 @@
+{
+  "action": "created",
+  "installation": {
+    "uuid": "installation_123"
+  },
+  "data": {
+    "issue": {
+      "id": "issue_123",
+      "title": "RuntimeError: checkout failed",
+      "culprit": "Billing.Checkout.create_session/2",
+      "permalink": "https://sentry.example/issues/issue_123",
+      "firstRelease": {
+        "version": "v1.4.2"
+      },
+      "metadata": {
+        "fingerprint": "billing-checkout-runtime-error"
+      }
+    },
+    "event": {
+      "event_id": "event_456",
+      "title": "RuntimeError: checkout failed",
+      "message": "billing_account_id was nil",
+      "environment": "prod",
+      "release": "v1.4.2",
+      "transaction": "POST /billing/checkout",
+      "web_url": "https://sentry.example/events/event_456",
+      "request": {
+        "url": "/billing/checkout",
+        "method": "POST"
+      },
+      "user": {
+        "id": "user_789"
+      },
+      "contexts": {
+        "trace": {
+          "trace_id": "trace_abc",
+          "data": {
+            "request_id": "req_xyz"
+          }
+        }
+      },
+      "tags": [
+        ["handled", "no"],
+        ["level", "error"]
+      ],
+      "exception": {
+        "values": [
+          {
+            "type": "RuntimeError",
+            "value": "checkout failed",
+            "stacktrace": {
+              "frames": [
+                {
+                  "filename": "lib/billing/checkout.ex",
+                  "function": "create_session",
+                  "lineno": 42,
+                  "module": "Billing.Checkout"
+                },
+                {
+                  "filename": "lib/app_web/controllers/billing_controller.ex",
+                  "function": "checkout",
+                  "lineno": 18,
+                  "module": "AppWeb.BillingController"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

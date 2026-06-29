@@ -1,6 +1,7 @@
 defmodule ErrorStoryTest do
   use ExUnit.Case, async: true
 
+  alias ErrorStory.Evidence
   alias ErrorStory.Incident
   alias ErrorStory.Explanation
   alias ErrorStory.TestSupport.FailingJourneyProvider
@@ -47,6 +48,73 @@ defmodule ErrorStoryTest do
                ErrorStory.snapshot(:billing_checkout, attrs,
                  allow: [:account_id, :billing_account_id]
                )
+    end
+  end
+
+  describe "visual_evidence/3" do
+    test "builds screenshot evidence with URL and file path references" do
+      occurred_at = ~U[2026-01-02 03:04:05Z]
+
+      assert {:ok,
+              %Evidence{
+                type: :screenshot,
+                source: :playwright,
+                occurred_at: ^occurred_at,
+                summary: "Checkout failure",
+                visual: visual,
+                links: [%{source: :screenshot, url: "https://cdn.example/frame.png"}]
+              }} =
+               ErrorStory.visual_evidence(:screenshot, %{
+                 source: :playwright,
+                 summary: "Checkout failure",
+                 url: "https://cdn.example/frame.png",
+                 file_path: "/tmp/frame.png",
+                 route: "/billing",
+                 occurred_at: occurred_at,
+                 token: "secret"
+               })
+
+      assert visual == %{
+               route: "/billing",
+               url: "https://cdn.example/frame.png",
+               file_path: "/tmp/frame.png",
+               occurred_at: occurred_at
+             }
+    end
+
+    test "builds replay evidence with a replay URL" do
+      assert {:ok,
+              %Evidence{
+                type: :replay,
+                source: :logrocket,
+                visual: %{replay_url: "https://app.logrocket.com/replay/123"}
+              }} =
+               ErrorStory.visual_evidence(:replay, %{
+                 source: :logrocket,
+                 replay_url: "https://app.logrocket.com/replay/123"
+               })
+    end
+
+    test "builds DOM snapshot evidence with a snapshot id" do
+      assert {:ok,
+              %Evidence{
+                type: :dom_snapshot,
+                visual: %{dom_snapshot_id: "dom_123", route: "/checkout"}
+              }} =
+               ErrorStory.visual_evidence(:dom_snapshot, %{
+                 dom_snapshot_id: "dom_123",
+                 route: "/checkout"
+               })
+    end
+
+    test "rejects visual evidence with no real reference" do
+      assert {:error, {:missing_visual_reference, :screenshot}} =
+               ErrorStory.visual_evidence(:screenshot, %{summary: "Missing reference"})
+    end
+
+    test "rejects unsupported visual evidence types" do
+      assert {:error, {:unsupported_visual_evidence_type, :heatmap}} =
+               ErrorStory.visual_evidence(:heatmap, %{url: "https://example.com/frame.png"})
     end
   end
 
@@ -128,6 +196,22 @@ defmodule ErrorStoryTest do
                ErrorStory.render_video(scene_plan)
 
       assert html =~ ~s(data-error-story-report="true")
+    end
+  end
+
+  describe "report/2" do
+    test "builds a complete report through the public API" do
+      {:ok, incident} = Incident.new(title: "Checkout failed", request_id: "req_123")
+
+      assert {:ok,
+              %{
+                incident: %Incident{evidence: [_log]},
+                explanation: %Explanation{},
+                scene_plan: %ScenePlan{},
+                artifact: %{format: :html_report, content: html}
+              }} = ErrorStory.report(incident, logs: {FakeLogProvider, []})
+
+      assert html =~ "request failed"
     end
   end
 end

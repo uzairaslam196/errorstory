@@ -45,17 +45,23 @@ defmodule ErrorStory.Integrations.Sentry.Context do
         service: Keyword.get(opts, :service),
         environment:
           first_present([Map.get(event, "environment"), Keyword.get(opts, :environment)]),
-        release: first_present([Map.get(event, "release"), Map.get(issue, "firstRelease")]),
+        release: first_present([Map.get(event, "release"), issue_release(issue)]),
         fingerprint: fingerprint(issue, event),
         request_id: request_id(event),
         trace_id: trace_id(event),
         user_id: user_id(event),
+        session_id: session_id(event),
         route: route(event),
         error: Map.get(event, "exception", %{}),
         stacktrace: stacktrace(event),
         metadata: %{
           action: Map.get(payload, "action"),
-          project: Map.get(payload, "installation", %{}) |> Map.get("uuid")
+          installation_uuid: Map.get(payload, "installation", %{}) |> Map.get("uuid"),
+          event_id: Map.get(event, "event_id"),
+          culprit: Map.get(issue, "culprit"),
+          transaction: Map.get(event, "transaction"),
+          method: event |> Map.get("request", %{}) |> Map.get("method"),
+          tags: tags(event)
         },
         evidence: [error_evidence],
         links: sentry_links(issue, event)
@@ -70,13 +76,23 @@ defmodule ErrorStory.Integrations.Sentry.Context do
       summary:
         first_present([Map.get(issue, "title"), Map.get(event, "message"), "Sentry error"]),
       payload: %{
+        issue_id: Map.get(issue, "id"),
+        event_id: Map.get(event, "event_id"),
+        culprit: Map.get(issue, "culprit"),
+        transaction: Map.get(event, "transaction"),
+        tags: tags(event),
+        stacktrace: stacktrace(event),
+        action: Map.get(payload, "action"),
         issue: issue,
-        event: event,
-        action: Map.get(payload, "action")
+        event: event
       },
       links: sentry_links(issue, event)
     )
   end
+
+  defp issue_release(%{"firstRelease" => %{"version" => version}}), do: version
+  defp issue_release(%{"firstRelease" => version}) when is_binary(version), do: version
+  defp issue_release(_issue), do: nil
 
   defp fingerprint(issue, event) do
     first_present([
@@ -107,6 +123,14 @@ defmodule ErrorStory.Integrations.Sentry.Context do
     |> Map.get("id")
   end
 
+  defp session_id(event) do
+    event
+    |> Map.get("contexts", %{})
+    |> Map.get("trace", %{})
+    |> Map.get("data", %{})
+    |> Map.get("session_id")
+  end
+
   defp route(event) do
     event
     |> Map.get("request", %{})
@@ -121,6 +145,16 @@ defmodule ErrorStory.Integrations.Sentry.Context do
       Map.get(exception, "stacktrace", %{}) |> Map.get("frames", [])
     end)
   end
+
+  defp tags(%{"tags" => tags}) when is_list(tags) do
+    Map.new(tags, fn
+      [key, value] -> {key, value}
+      {key, value} -> {key, value}
+      other -> {inspect(other), true}
+    end)
+  end
+
+  defp tags(_event), do: %{}
 
   defp sentry_links(issue, event) do
     [Map.get(issue, "permalink"), Map.get(event, "web_url")]

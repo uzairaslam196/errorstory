@@ -9,6 +9,9 @@ defmodule ErrorStory.Video.ScenePlan do
   alias ErrorStory.Evidence
   alias ErrorStory.Incident
 
+  @visual_evidence_types [:screenshot, :replay, :dom_snapshot]
+  @visual_reference_fields [:url, :file_path, :replay_url, :dom_snapshot_id, :route, :occurred_at]
+
   @type scene :: %{
           type: atom(),
           title: String.t(),
@@ -84,17 +87,66 @@ defmodule ErrorStory.Video.ScenePlan do
     }
   end
 
-  defp visual_scenes(evidence) do
-    evidence
+  defp visual_scenes(evidence_items) do
+    evidence_items
     |> Enum.filter(&visual_evidence?/1)
     |> Enum.map(fn %Evidence{} = evidence ->
       %{
         type: :browser_view,
-        title: "User-facing view",
+        title: browser_scene_title(evidence),
         caption: evidence.summary,
-        evidence: %{source: evidence.source, visual: evidence.visual, links: evidence.links}
+        evidence: browser_scene_evidence(evidence, evidence_items)
       }
     end)
+  end
+
+  defp browser_scene_title(%Evidence{type: :screenshot}), do: "Screenshot"
+  defp browser_scene_title(%Evidence{type: :replay}), do: "Session replay"
+  defp browser_scene_title(%Evidence{type: :dom_snapshot}), do: "DOM snapshot"
+
+  defp browser_scene_evidence(%Evidence{} = evidence, evidence_items) do
+    visual = evidence.visual || %{}
+
+    %{
+      source: evidence.source,
+      evidence_type: evidence.type,
+      route: visual_value(visual, :route),
+      viewport: visual_value(visual, :viewport),
+      url: visual_value(visual, :url),
+      file_path: visual_value(visual, :file_path),
+      replay_url: visual_value(visual, :replay_url),
+      dom_snapshot_id: visual_value(visual, :dom_snapshot_id),
+      timestamp: evidence.occurred_at || visual_value(visual, :occurred_at),
+      highlight: visual_value(visual, :highlight),
+      caption: evidence.summary,
+      related_journey_event: related_journey_event(evidence, evidence_items),
+      links: evidence.links
+    }
+    |> reject_empty_values()
+  end
+
+  defp related_journey_event(%Evidence{} = visual_evidence, evidence_items) do
+    visual_route = visual_value(visual_evidence.visual || %{}, :route)
+
+    evidence_items
+    |> Enum.filter(&(&1.type == :journey_event))
+    |> Enum.find(fn journey_evidence ->
+      journey_route =
+        Map.get(journey_evidence.payload, :route, Map.get(journey_evidence.payload, "route"))
+
+      visual_route in [journey_route, nil]
+    end)
+    |> case do
+      %Evidence{} = journey_evidence ->
+        Map.take(journey_evidence, [:source, :summary, :occurred_at])
+
+      nil ->
+        nil
+    end
+  end
+
+  defp reject_empty_values(values) do
+    Map.reject(values, fn {_key, value} -> value in [nil, "", [], %{}] end)
   end
 
   defp root_cause_scene(%Incident{} = incident) do
@@ -107,11 +159,28 @@ defmodule ErrorStory.Video.ScenePlan do
   end
 
   defp visual_evidence?(%Evidence{type: type, visual: visual})
-       when type in [:screenshot, :replay, :dom_snapshot] and is_map(visual) do
-    true
+       when type in @visual_evidence_types and is_map(visual) do
+    has_visual_reference?(visual)
   end
 
   defp visual_evidence?(_evidence), do: false
+
+  defp has_visual_reference?(visual) do
+    Enum.any?(@visual_reference_fields, fn key ->
+      visual
+      |> visual_value(key)
+      |> blank?()
+      |> Kernel.not()
+    end)
+  end
+
+  defp visual_value(visual, key) do
+    Map.get(visual, key, Map.get(visual, to_string(key)))
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_value), do: false
 
   defp technical_caption(%Incident{request_id: request_id}) when is_binary(request_id) do
     "Use request_id #{request_id} to inspect related logs and traces."

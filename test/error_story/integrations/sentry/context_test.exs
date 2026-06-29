@@ -4,6 +4,42 @@ defmodule ErrorStory.Integrations.Sentry.ContextTest do
   alias ErrorStory.Incident
   alias ErrorStory.Integrations.Sentry.Context
 
+  test "normalizes the canonical Sentry fixture into MVP incident fields" do
+    payload =
+      "test/fixtures/sentry/issue_webhook.json"
+      |> File.read!()
+      |> Jason.decode!()
+
+    assert {:ok,
+            %Incident{
+              id: "issue_123",
+              source: :sentry,
+              title: "RuntimeError: checkout failed",
+              environment: "prod",
+              release: "v1.4.2",
+              fingerprint: "billing-checkout-runtime-error",
+              request_id: "req_xyz",
+              trace_id: "trace_abc",
+              user_id: "user_789",
+              route: "/billing/checkout",
+              stacktrace: [first_frame | _],
+              metadata: %{
+                event_id: "event_456",
+                culprit: "Billing.Checkout.create_session/2",
+                transaction: "POST /billing/checkout",
+                method: "POST",
+                tags: %{"handled" => "no", "level" => "error"}
+              },
+              links: [
+                %{source: :sentry, url: "https://sentry.example/issues/issue_123"},
+                %{source: :sentry, url: "https://sentry.example/events/event_456"}
+              ]
+            }} = Context.normalize_webhook(payload)
+
+    assert %{"filename" => "lib/billing/checkout.ex", "function" => "create_session"} =
+             first_frame
+  end
+
   test "normalizes a sentry webhook payload into an incident" do
     payload = %{
       "action" => "created",
